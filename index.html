@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<title>Media Downloader</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f4f5;color:#111;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif}
+main{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{width:min(620px,100%);background:#fff;border-radius:24px;padding:26px;box-shadow:0 12px 40px #00000012}
+h1{font-size:28px;margin:0 0 8px}.sub{color:#666;margin:0 0 25px;line-height:1.45}
+label{display:block;font-weight:700;margin:16px 0 8px}
+input,select,button{width:100%;height:54px;border-radius:14px;font-size:16px}
+input,select{border:1px solid #d7d7d7;background:#fff;padding:0 14px}
+button{border:0;background:#111;color:#fff;font-weight:700;margin-top:20px}
+button:disabled{opacity:.5}
+.status{display:none;margin-top:16px;padding:14px;border-radius:12px;background:#f1f1f1;line-height:1.4}
+.note{font-size:12px;color:#777;line-height:1.5;margin-top:20px}
+</style>
+</head>
+<body>
+<main>
+<section class="card">
+<h1>⬇️ Media Downloader</h1>
+<p class="sub">Colle une URL, choisis audio ou vidéo, puis télécharge le fichier.</p>
+
+<label for="url">URL</label>
+<input id="url" type="url" inputmode="url" autocapitalize="none"
+       autocorrect="off" spellcheck="false" placeholder="https://...">
+
+<label for="format">Format</label>
+<select id="format">
+<option value="video">Vidéo — meilleure qualité</option>
+<option value="audio">Audio — meilleure qualité</option>
+</select>
+
+<button id="go">Télécharger</button>
+<div id="status" class="status"></div>
+
+<p class="note">
+Le champ API ci-dessous doit être remplacé par l'adresse de ton backend.
+Utilise uniquement des contenus dont le téléchargement est autorisé.
+</p>
+</section>
+</main>
+
+<script>
+/*
+ * REMPLACE CETTE URL par l'URL publique de ton backend.
+ * Exemple : https://mon-backend.example.com/download
+ */
+const API_URL = "https://TON-BACKEND.example.com/download";
+
+const url = document.querySelector("#url");
+const format = document.querySelector("#format");
+const go = document.querySelector("#go");
+const status = document.querySelector("#status");
+
+function show(text){
+  status.textContent=text;
+  status.style.display="block";
+}
+
+go.addEventListener("click", async ()=>{
+  const value=url.value.trim();
+
+  if(!value){show("Colle une URL.");return}
+  try{new URL(value)}catch{show("Cette URL n'est pas valide.");return}
+
+  if(API_URL.includes("TON-BACKEND")){
+    show("Configure d'abord l'URL de ton backend dans index.html.");
+    return;
+  }
+
+  go.disabled=true;
+  show("Préparation du téléchargement…");
+
+  try{
+    const response=await fetch(API_URL,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({url:value,type:format.value})
+    });
+
+    if(!response.ok){
+      let msg="Le serveur a rencontré une erreur.";
+      try{
+        const data=await response.json();
+        if(data.error) msg=data.error;
+      }catch{}
+      throw new Error(msg);
+    }
+
+    const contentType=response.headers.get("content-type")||"";
+
+    if(contentType.includes("application/json")){
+      const data=await response.json();
+      if(!data.downloadUrl) throw new Error("Le serveur n'a pas fourni de fichier.");
+      window.location.href=data.downloadUrl;
+      return;
+    }
+
+    const blob=await response.blob();
+    const disposition=response.headers.get("content-disposition")||"";
+    const match=disposition.match(/filename="?([^"]+)"?/i);
+    const filename=match?.[1] || (format.value==="audio"?"audio":"video");
+
+    const objectUrl=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=objectUrl;
+    a.download=filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),10000);
+    show("Téléchargement lancé. Sur iPhone, Safari peut proposer l'emplacement d'enregistrement.");
+  }catch(error){
+    show(error.message||"Erreur de connexion au serveur.");
+  }finally{
+    go.disabled=false;
+  }
+});
+</script>
+</body>
+</html>
