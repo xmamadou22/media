@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Doublage français ?</title>
+<style>
+:root{--bg:#eef2f7;--ink:#14213d;--mut:#5b6780;--card:#fff;--line:#d5dce8;--acc:#2f5bff;--ok:#0f8a5f;--mid:#b7791f;--no:#b42318}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1424;--ink:#e8ecf6;--mut:#94a0bd;--card:#172038;--line:#2a3556;--acc:#7b96ff;--ok:#3ed598;--mid:#f0b64a;--no:#ff8a7a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px 16px 48px}
+main{max-width:640px;margin:0 auto}
+h1{font-size:2rem;line-height:1.05;margin:8px 0 6px;font-weight:800;letter-spacing:-.03em}
+.sub{color:var(--mut);margin:0 0 20px}
+form{display:flex;gap:8px}
+input{font:inherit;color:inherit;background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0;flex:1}
+input:focus,button:focus-visible,a:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 18px;background:var(--acc);color:#fff;cursor:pointer}
+.links{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.links a,.card a.w{color:var(--acc);border:1.5px solid var(--line);border-radius:999px;padding:6px 12px;text-decoration:none;font-size:.9rem;font-weight:600;background:var(--card)}
+.card{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:14px 16px;margin-top:10px}
+.card h2{margin:0;font-size:1.05rem}
+.badge{margin:8px 0;padding:8px 12px;border-radius:8px;border-left:6px solid;font-weight:700;font-size:.95rem}
+.ok{border-color:var(--ok);color:var(--ok)}.mid{border-color:var(--mid);color:var(--mid)}
+.snip{color:var(--mut);font-size:.85rem;margin:0 0 8px}
+.err{color:var(--no);font-weight:600}
+.note{color:var(--mut);font-size:.82rem;margin-top:18px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Disponible en français&nbsp;?</h1>
+  <p class="sub">Tape le nom d'un film ou d'une série. Aucune clé ni compte requis.</p>
+
+  <form id="f">
+    <input id="q" type="search" placeholder="Ex. : Severance, Dune, Bluey…" autocomplete="off" required>
+    <button>Vérifier</button>
+  </form>
+
+  <div id="links"></div>
+  <div id="out" aria-live="polite"></div>
+  <p class="note">La vérification lit les sections des articles Wikipédia français : une section « Doublage » ou « Version française » est un bon signe. L'absence de section ne prouve rien, utilise alors les liens de recherche.</p>
+</main>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const WP='https://fr.wikipedia.org/w/api.php';
+const DUB=/doublage|version française|voix françaises|distribution des voix/i;
+
+async function wp(params){
+  const u=new URL(WP);
+  Object.entries({format:'json',origin:'*',...params}).forEach(([k,v])=>u.searchParams.set(k,v));
+  const r=await fetch(u);
+  if(!r.ok)throw new Error('Wikipédia indisponible ('+r.status+').');
+  return r.json();
+}
+
+function links(t){
+  const q=encodeURIComponent(t);
+  const g=s=>`https://www.google.com/search?q=${s}`;
+  $('#links').innerHTML='<div class="links">'+[
+    ['RS Doublage',g('site:rsdoublage.com+'+q)],
+    ['Allô Doublage',g('site:allodoublage.com+'+q)],
+    ['Où regarder (JustWatch BE)',`https://www.justwatch.com/be/recherche?q=${q}`],
+    ['Netflix',`https://www.netflix.com/search?q=${q}`],
+    ['Recherche VF',g(q+'+doublage+fran%C3%A7ais+VF')]
+  ].map(([n,h])=>`<a href="${h}" target="_blank" rel="noopener">${n}</a>`).join('')+'</div>';
+}
+
+$('#f').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const t=$('#q').value.trim(),out=$('#out');
+  links(t);
+  out.innerHTML='<p class="sub">Recherche sur Wikipédia…</p>';
+  try{
+    const s=await wp({action:'query',list:'search',srsearch:t,srlimit:5});
+    const hits=s.query.search;
+    if(!hits.length){out.innerHTML='<p class="sub">Aucun article trouvé. Utilise les liens ci-dessus.</p>';return}
+    const cards=await Promise.all(hits.map(async h=>{
+      let sec=[];
+      try{
+        const p=await wp({action:'parse',pageid:h.pageid,prop:'sections'});
+        sec=(p.parse.sections||[]).map(x=>x.line.replace(/<[^>]+>/g,'')).filter(l=>DUB.test(l));
+      }catch(_){}
+      const url='https://fr.wikipedia.org/?curid='+h.pageid;
+      const snip=h.snippet.replace(/<[^>]+>/g,'').replace(/&quot;/g,'"').replace(/&amp;/g,'&');
+      const badge=sec.length
+        ?`<div class="badge ok">Doublage français documenté<br><small>Section : ${esc(sec.join(', '))}</small></div>`
+        :`<div class="badge mid">Pas de section doublage sur la page</div>`;
+      return `<div class="card"><h2>${esc(h.title)}</h2>${badge}<p class="snip">${esc(snip)}…</p><a class="w" href="${url}" target="_blank" rel="noopener">Ouvrir l'article</a></div>`;
+    }));
+    out.innerHTML=cards.join('');
+  }catch(err){
+    out.innerHTML=`<p class="err">${esc(err.message||'Connexion impossible.')} Les liens de recherche ci-dessus fonctionnent quand même.</p>`;
+  }
+});
+</script>
+</body>
+</html>
